@@ -13,8 +13,8 @@ export class CustomersService {
     @Inject(PHONES_REPOSITORY) private readonly phonesRepository: typeof Phone,
   ) { }
 
-  async create(customer: CreateCustomerDTO): Promise<Customer> {
-    const data = instanceToPlain(customer);
+  async create(customerDto: CreateCustomerDTO): Promise<Customer> {
+    const data = instanceToPlain(customerDto);
     return await this.customerRepository.create<Customer>(data, {include: [this.phonesRepository]});
   }
 
@@ -23,23 +23,33 @@ export class CustomersService {
   }
 
   async findOneById(id: number): Promise<Customer> {
-    return await this.customerRepository.findOne<Customer>({ where: { id } });
+    return await this.customerRepository.findOne<Customer>({ where: { id }, include: [this.phonesRepository]} );
   }
 
-  async update(id: number, customer: UpdateCustomerDTO): Promise<Customer> {
-    Object.keys(customer).forEach(key => {
-      if (customer[key] === null) {
-        delete customer[key];
+  async update(id: number, customerDto: UpdateCustomerDTO): Promise<Customer> {
+    const data = instanceToPlain(customerDto);
+    Object.keys(customerDto).forEach(key => {
+      if (customerDto[key] === null) {
+        delete customerDto[key];
       }
     });
-    let customerRes = await this.customerRepository.findOne({ where: { id }})
-    customerRes.set(customer);
-    await customerRes.save();
-    return customerRes;
+    let updateCustomer = await this.customerRepository.findOne({ where: { id }, include: [this.phonesRepository]})
+    updateCustomer.set(data);
+    customerDto.phones.forEach(async (phone) => {
+      if (typeof phone.id !== 'undefined') {
+        let updatePhone = await this.phonesRepository.findOne({ where: { id: phone.id }})
+        updatePhone.set(phone);
+        updatePhone.save()
+      } else {
+        await this.phonesRepository.create<Phone>({...phone, phoneable_type: 'customer', phoneable_id: id })
+      }
+    });
+    await updateCustomer.save();
+    return updateCustomer;
   }
 
   async remove(id: string): Promise<void> {
-    const customer = await this.customerRepository.findOne<Customer>({ where: { id } });
+    const customer = await this.customerRepository.findOne<Customer>({ where: { id },  include: [this.phonesRepository] },);
     await customer.destroy();
   }
 }
